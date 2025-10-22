@@ -3,7 +3,6 @@ title: "Data Manipulation Challenge"
 subtitle: "A Mental Model for Method Chaining in Pandas"
 format:
   html: default
-  pdf: default
 execute:
   echo: true
   eval: true
@@ -218,7 +217,41 @@ What's wrong with the `lateStatement` assignment and how would you fix it?
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-Adam's answers will be here.
+**Question 1: Data Types and Date Handling**
+
+```python
+# Check data types of date columns
+date_types = (
+    shipments_df
+    .dtypes
+    .to_frame('dtype')
+    .query('index in ["plannedShipDate", "actualShipDate"]')
+)
+print(date_types)
+```
+
+Both columns are datetime64[ns] because they were parsed as dates during CSV loading. This enables date arithmetic and comparisons.
+
+**Question 2: String vs Date Comparison**
+
+String comparison uses lexicographic ordering: "04-11-2025" > "05-20-2024" = False (because "04" < "05"). Date comparison: April 11, 2025 > May 20, 2024 = True (because 2025 > 2024).
+
+**Question 3: Debug This Code**
+
+The error is referencing `shipments_df['is_late']` instead of the current dataframe. Fix:
+
+```python
+shipments_with_lateness = (
+    shipments_df
+    .assign(
+        is_late=lambda df: df['actualShipDate'] > df['plannedShipDate'],
+        days_late=lambda df: (df['actualShipDate'] - df['plannedShipDate']).dt.days,
+        lateStatement=lambda df: df['is_late'].map({True: "Darn Shipment is Late", False: "Shipment is on Time"})
+    )
+)
+```
+
+Use `lambda df:` to reference the current dataframe and `.map()` for conditional assignment.
 
 ### 2. Subset: Querying Rows and Filtering Columns
 
@@ -263,7 +296,35 @@ print(late_shipments.head())
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Query vs Boolean Indexing**
+
+```python
+# .query() method
+late_shipments_query = (
+    shipments_with_lateness
+    .query('is_late == True')
+)
+
+# Boolean indexing
+late_shipments_boolean = (
+    shipments_with_lateness[shipments_with_lateness['is_late'] == True]
+)
+```
+
+`.query()` is more readable - uses SQL-like syntax, handles complex conditions better, and automatically quotes column names.
+
+**Question 2: Additional Row Querying**
+
+```python
+late_threshold = 5
+very_late_shipments = (
+    shipments_with_lateness
+    .query(f'days_late >= {late_threshold}')
+    .filter(['shipID', 'partID', 'days_late', 'is_late'])
+)
+```
+
+Variables in queries enable flexible analysis with easily adjustable thresholds.
 
 ### 3. Drop: Removing Unwanted Data
 
@@ -301,7 +362,38 @@ print("Remaining columns:", clean_shipments.columns.tolist())
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Drop vs Filter Strategies**
+
+```python
+# Drop - remove specific columns
+clean_drop = (
+    shipments_with_lateness
+    .drop(columns=['quantity'])
+)
+
+# Filter - keep specific columns
+clean_filter = (
+    shipments_with_lateness
+    .filter(['shipID', 'partID', 'plannedShipDate', 'actualShipDate', 'is_late', 'days_late'])
+)
+```
+
+Use `.drop()` when removing few columns, `.filter()` when keeping few columns.
+
+**Question 2: Handling Missing Data**
+
+```python
+# Remove any row with any missing value
+strict_clean = shipments_with_lateness.dropna()
+
+# Remove only rows missing in specific columns
+selective_clean = (
+    shipments_with_lateness
+    .dropna(subset=['plannedShipDate', 'actualShipDate'])
+)
+```
+
+Selective `dropna()` preserves more data and focuses on columns relevant to your analysis.
 
 ### 4. Sort: Arranging Data
 
@@ -339,7 +431,40 @@ print(sorted_by_lateness[['shipID', 'partID', 'days_late', 'is_late']].head(10))
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Sorting Strategies**
+
+```python
+# Ascending (smallest first)
+ascending_sort = clean_shipments.sort_values('days_late', ascending=True)
+
+# Descending (largest first)  
+descending_sort = clean_shipments.sort_values('days_late', ascending=False)
+
+# Multi-column sorting
+multi_sort = (
+    clean_shipments
+    .sort_values(['is_late', 'days_late'], ascending=[True, False])
+    .reset_index(drop=True)
+)
+```
+
+`ascending=True` sorts smallest to largest, `ascending=False` sorts largest to smallest. Multi-column sorting uses a list of columns and corresponding boolean values.
+
+**Question 2: Index Management**
+
+```python
+# Original index becomes scrambled after sorting
+sorted_no_reset = clean_shipments.sort_values('days_late', ascending=False)
+
+# Reset index for clean sequential numbering
+sorted_with_reset = (
+    clean_shipments
+    .sort_values('days_late', ascending=False)
+    .reset_index(drop=True)
+)
+```
+
+Reset the index after sorting to get clean sequential numbering (0, 1, 2...) instead of scrambled original indices.
 
 ### 5. Aggregate: Summarizing Data
 
@@ -379,7 +504,26 @@ print(f"\nOn-time delivery rate: {on_time_rate:.1f}%")
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Boolean Aggregation**
+
+```python
+# Boolean values convert to numbers: True=1, False=0
+boolean_demo = (
+    clean_shipments
+    .assign(
+        total_shipments=lambda df: len(df),
+        late_shipments=lambda df: df['is_late'].sum(),
+        late_percentage=lambda df: df['is_late'].mean() * 100
+    )
+    .agg({
+        'total_shipments': 'first',
+        'late_shipments': 'first', 
+        'late_percentage': 'first'
+    })
+)
+```
+
+`sum()` on booleans counts True values (True=1, False=0). `mean()` gives the proportion of True values. `df['is_late'].sum()` equals `(df['is_late'] == True).sum()`.
 
 ### 6. Merge: Combining Information
 
@@ -418,7 +562,36 @@ print(shipments_with_category['prodCategory'].value_counts())
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Join Types and Data Loss**
+
+```python
+# Left join preserves all shipments
+left_join = clean_shipments.merge(product_line_df, on='partID', how='left')
+
+# Inner join only keeps shipments with matching partIDs
+inner_join = clean_shipments.merge(product_line_df, on='partID', how='inner')
+
+print(f"Left join: {len(left_join)} rows")
+print(f"Inner join: {len(inner_join)} rows")
+print(f"Data lost: {len(clean_shipments) - len(inner_join)} shipments")
+```
+
+Left join preserves all data and identifies missing product info. Inner join loses shipments without matching product data.
+
+**Question 2: Key Column Matching**
+
+```python
+# Check for duplicate partIDs
+duplicate_check = (
+    product_line_df
+    .groupby('partID')
+    .size()
+    .reset_index(name='count')
+    .query('count > 1')
+)
+```
+
+Duplicates in the right dataframe cause data multiplication - one shipment becomes multiple rows, inflating counts and breaking aggregations.
 
 ### 7. Split-Apply-Combine: Group Analysis
 
@@ -458,7 +631,47 @@ print(service_by_category)
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: GroupBy Mechanics**
+
+```python
+# .groupby() splits data into groups by unique values
+categories = (
+    shipments_with_category
+    .groupby('prodCategory')
+    .size()
+    .reset_index(name='count')
+)
+
+# Without .agg() you get a GroupBy object (lazy evaluation)
+grouped_data = shipments_with_category.groupby('prodCategory')
+print(f"Type: {type(grouped_data)}")  # <class 'pandas.core.groupby.DataFrameGroupBy'>
+```
+
+`.groupby()` creates groups but doesn't compute until you call `.agg()`. The GroupBy object is lazy - it needs `.agg()` to return actual results.
+
+**Question 2: Multi-Level Grouping**
+
+```python
+# Single-level: overall category performance
+category_analysis = (
+    shipments_with_category
+    .groupby('prodCategory')
+    .agg({'is_late': ['count', 'sum', 'mean']})
+)
+
+# Multi-level: shipment-level performance within categories
+shipment_analysis = (
+    shipments_with_category
+    .groupby(['shipID', 'prodCategory'])
+    .agg({'is_late': 'any', 'days_late': 'max'})
+    .reset_index()
+    .assign(
+        categories_per_shipment=lambda df: df.groupby('shipID')['prodCategory'].transform('nunique')
+    )
+)
+```
+
+Single-level shows overall category performance. Multi-level reveals cross-category ordering patterns and shipment-specific issues.
 
 ## Answering A Business Question
 
@@ -502,7 +715,39 @@ print(f"Percentage with multiple categories: {multi_category_shipments['shipID']
 
 #### Briefly Give Answers to the Discussion Questions In This Section
 
-> Replace this with your answers to the discussion questions
+**Question 1: Business Question Analysis**
+
+This analysis answers: **"How often do customers order products from multiple categories in a single shipment, and what are the service level implications?"**
+
+```python
+# Single-level: overall category performance
+category_analysis = (
+    shipments_with_category
+    .groupby('prodCategory')
+    .agg({'is_late': ['count', 'sum', 'mean']})
+)
+
+# Multi-level: shipment-level performance within categories
+shipment_analysis = (
+    shipments_with_category
+    .groupby(['shipID', 'prodCategory'])
+    .agg({'is_late': 'any', 'days_late': 'max'})
+    .reset_index()
+    .assign(
+        categories_per_shipment=lambda df: df.groupby('shipID')['prodCategory'].transform('nunique')
+    )
+)
+
+# Calculate multi-category metrics
+multi_category_pct = (
+    shipment_analysis
+    .query('categories_per_shipment > 1')['shipID']
+    .nunique() / shipment_analysis['shipID'].nunique() * 100
+)
+print(f"Multi-category shipments: {multi_category_pct:.1f}%")
+```
+
+Single-level grouping shows overall category performance. Multi-level grouping reveals cross-category ordering patterns and shipment-specific issues. This helps management understand supply chain complexity and optimize operations for multi-category orders.
 
 ## Student Analysis Section: Mastering Data Manipulation {#student-analysis-section}
 
@@ -540,6 +785,142 @@ print(f"Percentage with multiple categories: {multi_category_shipments['shipID']
 - Support the insights from your discussion questions
 - Be appropriate for a business audience
 - Do not `echo` the code that creates the visualizations
+
+```{python}
+#| label: professional-visualization
+#| echo: false
+#| fig-width: 12
+#| fig-height: 8
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+# Set professional styling
+plt.style.use('default')
+sns.set_palette("husl")
+
+# Create comprehensive service level analysis
+service_analysis = (
+    shipments_with_category
+    .groupby('prodCategory')
+    .agg({
+        'is_late': ['count', 'sum', 'mean'],
+        'days_late': ['mean', 'max']
+    })
+    .round(3)
+)
+
+# Flatten column names for easier access
+service_analysis.columns = ['total_shipments', 'late_shipments', 'late_rate', 'avg_days_late', 'max_days_late']
+service_analysis = service_analysis.reset_index()
+
+# Calculate on-time percentage
+service_analysis['on_time_rate'] = (1 - service_analysis['late_rate']) * 100
+
+# Create the visualization
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+fig.suptitle('ZappTech Service Level Analysis by Product Category', fontsize=16, fontweight='bold', y=0.98)
+
+# 1. On-Time Delivery Rate by Category (Horizontal Bar Chart)
+bars1 = ax1.barh(service_analysis['prodCategory'], service_analysis['on_time_rate'], 
+                 color=plt.cm.viridis(service_analysis['on_time_rate']/100))
+ax1.set_xlabel('On-Time Delivery Rate (%)', fontsize=12, fontweight='bold')
+ax1.set_ylabel('Product Category', fontsize=12, fontweight='bold')
+ax1.set_title('Service Level Performance by Category', fontsize=14, fontweight='bold')
+ax1.grid(axis='x', alpha=0.3)
+
+# Add value labels on bars
+for i, (bar, rate) in enumerate(zip(bars1, service_analysis['on_time_rate'])):
+    ax1.text(rate + 0.5, bar.get_y() + bar.get_height()/2, f'{rate:.1f}%', 
+             va='center', fontweight='bold', fontsize=10)
+
+# 2. Shipment Volume vs Service Level (Scatter Plot)
+scatter = ax2.scatter(service_analysis['total_shipments'], service_analysis['on_time_rate'], 
+                     s=service_analysis['avg_days_late']*50,  # Size by average days late
+                     c=service_analysis['late_rate'], 
+                     cmap='Reds', alpha=0.7, edgecolors='black', linewidth=1)
+ax2.set_xlabel('Total Shipments', fontsize=12, fontweight='bold')
+ax2.set_ylabel('On-Time Delivery Rate (%)', fontsize=12, fontweight='bold')
+ax2.set_title('Volume vs Performance Analysis', fontsize=14, fontweight='bold')
+ax2.grid(alpha=0.3)
+
+# Add category labels
+for i, category in enumerate(service_analysis['prodCategory']):
+    ax2.annotate(category, (service_analysis['total_shipments'].iloc[i], 
+                           service_analysis['on_time_rate'].iloc[i]),
+                xytext=(5, 5), textcoords='offset points', fontsize=9, alpha=0.8)
+
+# Add colorbar for late rate
+cbar = plt.colorbar(scatter, ax=ax2)
+cbar.set_label('Late Rate', fontsize=10, fontweight='bold')
+
+# 3. Average Days Late by Category (Bar Chart)
+bars3 = ax3.bar(service_analysis['prodCategory'], service_analysis['avg_days_late'], 
+                color=plt.cm.Reds(service_analysis['avg_days_late']/service_analysis['avg_days_late'].max()))
+ax3.set_xlabel('Product Category', fontsize=12, fontweight='bold')
+ax3.set_ylabel('Average Days Late', fontsize=12, fontweight='bold')
+ax3.set_title('Average Lateness by Category', fontsize=14, fontweight='bold')
+ax3.tick_params(axis='x', rotation=45)
+ax3.grid(axis='y', alpha=0.3)
+
+# Add value labels
+for bar, days in zip(bars3, service_analysis['avg_days_late']):
+    ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1, f'{days:.1f}', 
+             ha='center', va='bottom', fontweight='bold', fontsize=10)
+
+# 4. Service Level Distribution (Pie Chart)
+# Create performance categories
+service_analysis['performance_tier'] = pd.cut(service_analysis['on_time_rate'], 
+                                             bins=[0, 80, 90, 95, 100], 
+                                             labels=['Poor (<80%)', 'Fair (80-90%)', 'Good (90-95%)', 'Excellent (95%+)'])
+
+tier_counts = service_analysis['performance_tier'].value_counts()
+colors = ['#ff4444', '#ffaa44', '#44aa44', '#4444ff']
+
+wedges, texts, autotexts = ax4.pie(tier_counts.values, labels=tier_counts.index, autopct='%1.1f%%', 
+                                   colors=colors, startangle=90)
+ax4.set_title('Performance Tier Distribution', fontsize=14, fontweight='bold')
+
+# Improve text readability
+for autotext in autotexts:
+    autotext.set_color('white')
+    autotext.set_fontweight('bold')
+    autotext.set_fontsize(10)
+
+# Adjust layout and add summary statistics
+plt.tight_layout()
+plt.subplots_adjust(top=0.93)
+
+# Add summary text box
+summary_text = f"""
+Key Insights:
+• Total Categories: {len(service_analysis)}
+• Best Performer: {service_analysis.loc[service_analysis['on_time_rate'].idxmax(), 'prodCategory']} ({service_analysis['on_time_rate'].max():.1f}%)
+• Worst Performer: {service_analysis.loc[service_analysis['on_time_rate'].idxmin(), 'prodCategory']} ({service_analysis['on_time_rate'].min():.1f}%)
+• Average Service Level: {service_analysis['on_time_rate'].mean():.1f}%
+• Total Shipments Analyzed: {service_analysis['total_shipments'].sum():,}
+"""
+
+fig.text(0.02, 0.02, summary_text, fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+
+plt.show()
+
+# Print detailed summary table
+print("Detailed Service Level Analysis by Product Category:")
+print("=" * 60)
+summary_table = (
+    service_analysis
+    .sort_values('on_time_rate', ascending=False)
+    .assign(
+        performance_rank=lambda df: range(1, len(df) + 1),
+        late_percentage=lambda df: df['late_rate'] * 100
+    )
+    [['performance_rank', 'prodCategory', 'total_shipments', 'on_time_rate', 'late_percentage', 'avg_days_late']]
+    .round(2)
+)
+print(summary_table.to_string(index=False))
+```
 
 ## Challenge Requirements 📋
 
